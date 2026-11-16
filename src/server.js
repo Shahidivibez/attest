@@ -34,6 +34,22 @@ const TAMPER_LOCKED = process.env.TAMPER_LOCKED === "1";
 const DEMO_TOKEN = process.env.DEMO_TOKEN || "";
 
 const app = express();
+
+// Never let a browser or proxy reuse an API response.
+//
+// The state endpoint is mutable — a tamper, a reset or a new decision all change
+// it — but Express was emitting an ETag with no Cache-Control, which lets the
+// browser serve a stale body. That surfaced as a red "CHAIN BROKEN" banner on a
+// fresh load of an already-healed record.
+app.set("etag", false);
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.set("Pragma", "no-cache");
+  }
+  next();
+});
+
 app.use(express.json());
 
 app.use(express.static(path.join(__dirname, "..", "public")));
