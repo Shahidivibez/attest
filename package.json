@@ -4,8 +4,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node test/smoke.js",
-    "circuit:build": "bash scripts/build-circuit.sh"
+    "test": "node test/smoke.js && node test/seed.js",
+    "circuit:build": "bash scripts/build-circuit.sh",
+    "test:live": "node test/verify-page.js"
   },
   "keywords": [],
   "author": "",

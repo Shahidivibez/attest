@@ -86,7 +86,26 @@ catches an arbitrary decision. The anchor catches an operator who is careful.
 Step 3 is the point. A hash chain alone is defeated by an attacker who understands it. The
 anchor is what makes the record something we can no longer change.
 
-### Verify it yourself — `/verify.html`
+#### Why the record is committed, not regenerated
+
+`seed/record.json` holds one real, anchored record — six decisions with their proofs and their
+zkVerify transaction hashes. On boot the app loads it rather than re-proving.
+
+Without this, a restart on a host with no persistent disk regenerates everything: new proofs, new
+zkVerify submissions, a new chain root, new transaction hashes. The record a reviewer reads in the
+submission would not be the record the running app shows, and any quoted transaction hash would go
+stale. Committing the seed makes the app match the submission exactly, and cold starts instant.
+
+**What this does not change.** The proofs are genuine Groth16 proofs over the same circuit — you
+cannot fabricate one without running it, so their existence is itself evidence the circuit ran. The
+anchors are real on-chain transactions. And **any decision added through the agent afterwards is
+proven live and submitted live**, against the same circuit and verification key. `/api/state` reports
+`record.source` as `seed` or `live` so the distinction is never hidden.
+
+`test/seed.js` verifies every committed proof against the current verification key — if the circuit
+is ever rebuilt, the key changes and that test fails rather than leaving stale proofs in place.
+
+## Verify it yourself — `/verify.html`
 
 The audit page asks you to trust our server. `/verify` doesn't.
 
@@ -154,7 +173,8 @@ $ node test/smoke.js
 ```bash
 npm install
 npm start            # http://localhost:3000
-npm test             # 16 end-to-end checks
+npm test             # 28 checks (circuit/chain + committed seed)
+npm run test:live    # 17 more, needs the server running
 ```
 
 Rebuild the circuit from scratch (needs [`circom`](https://docs.circom.io) 2.1.x on PATH):
@@ -199,28 +219,33 @@ can produce proofs of false statements. That is fine for a demo and unacceptable
 The path forward is a public multi-party ceremony (or a zkVerify-supported setup) with the
 contribution hashes published. This is a single function swap, not a redesign.
 
-**2. Anchoring defaults to the free testnet.** zkVerify **testnet** via Kurier is free and has full
-feature parity — proofs finalise on zkVerify testnet. **Mainnet** costs $0.005 per proof plus $0.001
-per verification-key registration, paid in USDC on Base via x402. The trade is honest: testnet is
-real on-chain finality on a test network, not a mainnet guarantee. The network is shown in the UI
-and recorded with every anchor so nobody has to guess which one a given record came from.
+**2. Anchoring is on zkVerify testnet, not mainnet.** Live and working — every decision produces a
+proof that is submitted via Kurier, polled to `Finalized`, and stored with its job ID and transaction
+hash. Testnet is free with full feature parity; **mainnet** costs $0.005 per proof plus $0.001 per
+verification-key registration, payable in USDC on Base. The network is recorded with every anchor and
+shown in the UI, so nobody has to guess which one a given record came from.
 
-**3. Anchoring is local by default.** Without `KURIER_API_KEY` the app runs in `mode: "local"`:
-proofs are verified locally and **nothing is anchored on-chain**. The UI says so explicitly rather
-than implying an on-chain guarantee it doesn't have. In that state the chain is tamper-*evident*
-(it catches edits) but not tamper-*proof* against the operator (they control both the data and the
-verifier). Those are different claims and it matters which one is true.
+Example: [tx `0x4b3f50a8…`](https://zkverify-testnet.subscan.io/extrinsic/0x4b3f50a83daa02db40da5000692aa0037ff869aeecffed224ac22a1916ee2485).
 
-**4. The policy is a toy.** Two thresholds over two numbers. The mechanism generalises to real
+**3. Without a Kurier key the app degrades to local mode.** Proofs still verify locally and the chain
+still catches edits, but nothing is anchored — and the UI says so explicitly rather than implying an
+on-chain guarantee it doesn't have. In that state the record is tamper-*evident* but not tamper-*proof*
+against the operator. Those are different claims and it matters which one is true.
+
+**4. The seeded record is a committed artifact.** Six decisions ship pre-proven and pre-anchored so
+the demo is deterministic across restarts. Adding a decision proves and anchors live. This is stated
+in the README and surfaced as `record.source` in the API rather than left implicit.
+
+**5. The policy is a toy.** Two thresholds over two numbers. The mechanism generalises to real
 policies — multiple weighted factors, regulatory thresholds, any deterministic rule — but this
 specific circuit is a demonstration, not a credit engine.
 
-**5. The demo tamper endpoint is an affordance, not a feature.** On a public URL it is guarded by
+**6. The demo tamper endpoint is an affordance, not a feature.** On a public URL it is guarded by
 self-heal, rate limiting and an optional token, but it exists so reviewers can watch the system catch
 an edit. In production there is no such endpoint — tampering happens outside the application, in the
 database, which is exactly the threat model.
 
-**6. The agent does not use an LLM, deliberately.** The decision is a deterministic rule, because
+**7. The agent does not use an LLM, deliberately.** The decision is a deterministic rule, because
 the thing being proven is rule-following and an LLM in the decision path would make the proof
 meaningless. Where an LLM belongs in this product is drafting the *explanation* attached to a
 decision — and that explanation should be proven to be derived from the same committed inputs.
@@ -254,7 +279,9 @@ src/zkverify.js           Kurier anchoring (degrades honestly when unconfigured)
 src/store.js              decision store + separately-held anchor record
 src/server.js             agent core, API, tamper endpoints
 public/index.html         the audit UI
+seed/record.json          one real anchored record, loaded instead of re-proving
 test/smoke.js             19 circuit/chain checks including the forgery attempts
+test/seed.js              9 checks that the committed record still verifies
 test/verify-page.js       17 checks replaying the in-browser verification path
 public/verify.html        independent verification, runs in the visitor's browser
 ```

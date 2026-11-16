@@ -26,6 +26,7 @@ const chainLib = require("./chain");
 const prover = require("./prover");
 const zkverify = require("./zkverify");
 const store = require("./store");
+const seedRecord = require("./seed");
 
 const PORT = process.env.PORT || 3000;
 const HEAL_MS = Number(process.env.DEMO_HEAL_MS || 90_000);
@@ -213,6 +214,12 @@ app.get("/api/state", (req, res) => {
       locked: TAMPER_LOCKED,
     },
     zkverify: { configured: zkverify.configured(), ...zkverify.network() },
+    record: {
+      source: store.loadMeta().source || "live",
+      note:
+        "seed = a committed, previously-anchored record loaded for deterministic review; " +
+        "live = proved at boot. Decisions added through the agent are always proved live.",
+    },
   });
 });
 
@@ -333,13 +340,43 @@ app.post("/api/tamper/reseal", tamperGate, (req, res) => {
 });
 
 app.post("/api/reset", tamperGate, async (req, res) => {
+  const restored = await restoreBaseline();
+  res.json({ ok: true, ...restored });
+});
+
+/* ------------------------------------------------------------------ */
+/* baseline                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Restore the baseline record.
+ *
+ * If a committed seed exists we load it: deterministic, instant, and the
+ * anchored transaction hashes stay valid across restarts. Only if there is no
+ * seed do we prove a fresh record — which costs a proof and a Kurier call per
+ * entry, and produces a different chain every time.
+ *
+ * A decision added after boot still goes through the live path: real proof,
+ * real submission, real anchor.
+ */
+async function restoreBaseline() {
+  const snap = seedRecord.load();
+
+  if (snap) {
+    store.saveEntries(snap.entries);
+    store.saveAnchors(seedRecord.reconstructAnchors(snap.entries));
+    store.patchMeta({ tamperedAt: null, tamperSeq: null, source: "seed" });
+    snapshotPristine();
+    return { source: "seed", entries: snap.entries.length };
+  }
+
   store.saveEntries([]);
   store.saveAnchors([]);
   store.savePristine(null);
-  store.patchMeta({ tamperedAt: null, tamperSeq: null });
+  store.patchMeta({ tamperedAt: null, tamperSeq: null, source: "live" });
   const seeded = await seed();
-  res.json({ ok: true, seeded: seeded.length });
-});
+  return { source: "live", entries: seeded.length };
+}
 
 /* ------------------------------------------------------------------ */
 /* boot                                                                */
@@ -372,8 +409,12 @@ async function boot() {
   store.patchMeta({ bootedAt: Date.now() });
 
   if (store.loadEntries().length === 0) {
-    console.log("[attest] empty store — seeding demo decisions");
-    await seed();
+    const restored = await restoreBaseline();
+    if (restored.source === "seed") {
+      console.log(`[attest] loaded committed seed record — ${restored.entries} entries, no proving on boot`);
+    } else {
+      console.log(`[attest] no seed record — proved ${restored.entries} decisions live`);
+    }
   } else {
     // A cold start on an ephemeral filesystem can leave decisions.json but no
     // pristine snapshot. Rebuild it so self-healing still works.
