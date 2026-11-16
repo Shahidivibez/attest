@@ -23,6 +23,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
 COPY public ./public
+
+# The committed seed record. Without this the image has no record to load and
+# falls back to proving six decisions live on every boot — slow cold starts and
+# a different chain every restart.
+COPY seed ./seed
 COPY circuits/build/policy_final.zkey ./circuits/build/policy_final.zkey
 COPY circuits/build/verification_key.json ./circuits/build/verification_key.json
 COPY circuits/build/policy_js ./circuits/build/policy_js
