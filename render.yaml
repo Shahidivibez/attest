@@ -1,0 +1,17 @@
+# Render blueprint — free tier works, but note free instances sleep after
+# inactivity, which makes a cold judge visit look broken. Prefer the $7 tier
+# for the submission window, or keep an external uptime ping on /health.
+services:
+  - type: web
+    name: attest
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DEMO_HEAL_MS
+        value: "90000"
+      - key: KURIER_API_KEY
+        sync: false
+      - key: ATTEST_VK_HASH
+        sync: false

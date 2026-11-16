@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ATTEST — the audit log you cannot backdate</title>
+<style>
+  :root{
+    --bg:#08090c; --panel:#0f1116; --panel2:#14171e; --line:#1e222c;
+    --txt:#e6e9ef; --dim:#8b93a7; --dimmer:#5b6376;
+    --ok:#3ddc97; --bad:#ff5f5f; --warn:#ffb020; --acc:#5b9dff;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:
+      radial-gradient(900px 500px at 15% -10%, #122033 0%, transparent 60%),
+      radial-gradient(700px 400px at 90% 0%, #1a1330 0%, transparent 55%),
+      var(--bg);
+    color:var(--txt);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:14px;line-height:1.5;padding:0 0 80px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+  /* header */
+  header{padding:44px 0 26px;border-bottom:1px solid var(--line)}
+  .brandrow{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  h1{
+    font-size:34px;margin:0;letter-spacing:.22em;font-weight:800;
+    background:linear-gradient(92deg,#fff 10%,#7fb6ff 60%,#b48bff 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .tagline{color:var(--dim);font-size:14px;letter-spacing:.02em}
+  .sub{color:var(--dimmer);font-size:12.5px;margin-top:10px;max-width:760px}
+
+  /* status banner */
+  .banner{
+    margin:22px 0 0;padding:16px 20px;border-radius:12px;display:flex;
+    align-items:center;gap:16px;border:1px solid;font-weight:600;letter-spacing:.03em
+  }
+  .banner.intact{background:rgba(61,220,151,.07);border-color:rgba(61,220,151,.35);color:var(--ok)}
+  .banner.broken{background:rgba(255,95,95,.09);border-color:rgba(255,95,95,.45);color:var(--bad)}
+  .banner .big{font-size:19px;letter-spacing:.14em}
+  .banner .detail{font-weight:400;color:var(--dim);font-size:12.5px;font-family:var(--mono)}
+  .dot{width:10px;height:10px;border-radius:50%;background:currentColor;box-shadow:0 0 12px currentColor;flex:none}
+  .dot.pulse{animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* stat strip */
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:22px 0}
+  .stat{background:var(--panel);padding:16px 18px}
+  .stat .k{font-size:10.5px;letter-spacing:.16em;color:var(--dimmer);text-transform:uppercase}
+  .stat .v{font-size:22px;font-weight:700;font-family:var(--mono);margin-top:6px}
+  .stat .v.ok{color:var(--ok)} .stat .v.bad{color:var(--bad)} .stat .v.warn{color:var(--warn)}
+
+  /* layout */
+  .cols{display:grid;grid-template-columns:1fr 340px;gap:22px;align-items:start}
+  @media(max-width:900px){.cols{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .card h2{margin:0;padding:14px 18px;font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);
+    background:var(--panel2);font-weight:700}
+
+  /* ledger */
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;padding:9px 14px;font-size:10px;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--dimmer);border-bottom:1px solid var(--line);font-weight:600}
+  td{padding:10px 14px;border-bottom:1px solid rgba(30,34,44,.55);vertical-align:middle}
+  tr.entry{cursor:pointer}
+  tr.entry:hover{background:rgba(91,157,255,.05)}
+  tr.entry.open{background:rgba(91,157,255,.07)}
+  .mono{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+  .pill{display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;
+    font-weight:700;letter-spacing:.09em;font-family:var(--mono)}
+  .pill.approve{background:rgba(61,220,151,.13);color:var(--ok);border:1px solid rgba(61,220,151,.3)}
+  .pill.reject{background:rgba(255,95,95,.12);color:var(--bad);border:1px solid rgba(255,95,95,.3)}
+  .pill.proven{background:rgba(91,157,255,.13);color:var(--acc);border:1px solid rgba(91,157,255,.32)}
+  .pill.unproven{background:rgba(255,176,32,.12);color:var(--warn);border:1px solid rgba(255,176,32,.32)}
+  .pill.anchored{background:rgba(180,139,255,.13);color:#b48bff;border:1px solid rgba(180,139,255,.32)}
+  .pill.local{background:rgba(139,147,167,.1);color:var(--dim);border:1px solid rgba(139,147,167,.25)}
+
+  /* detail drawer */
+  .detail{background:var(--panel2);border-bottom:1px solid var(--line);padding:16px 18px}
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:6px 14px;font-size:12px;margin-bottom:12px}
+  .kv .k{color:var(--dimmer);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding-top:2px}
+  .kv .v{font-family:var(--mono);font-size:11.5px;word-break:break-all;color:var(--txt)}
+  .null{color:var(--dimmer);font-style:italic;font-family:system-ui}
+  .notebox{background:rgba(61,220,151,.06);border-left:2px solid var(--ok);
+    padding:10px 12px;font-size:11.5px;color:var(--dim);border-radius:0 6px 6px 0;margin-top:10px}
+  .notebox.warn{background:rgba(255,176,32,.06);border-left-color:var(--warn)}
+
+  /* side panel */
+  .side .card + .card{margin-top:22px}
+  .side .body{padding:14px 18px}
+  .privrow{display:flex;justify-content:space-between;padding:7px 0;
+    border-bottom:1px dashed rgba(30,34,44,.8);font-size:12px}
+  .privrow:last-child{border-bottom:none}
+  .privrow .n{font-family:var(--mono);color:var(--dim)}
+  .tag{font-size:9.5px;letter-spacing:.1em;padding:1px 6px;border-radius:4px;font-weight:700}
+  .tag.pub{background:rgba(91,157,255,.14);color:var(--acc)}
+  .tag.priv{background:rgba(255,95,95,.13);color:var(--bad)}
+
+  /* controls */
+  button{font-family:inherit;font-size:12.5px;font-weight:600;padding:9px 14px;
+    border-radius:8px;border:1px solid var(--line);background:var(--panel2);
+    color:var(--txt);cursor:pointer;transition:.14s;width:100%;text-align:left}
+  button:hover{border-color:#2c3341;background:#191d26}
+  button.danger{border-color:rgba(255,95,95,.32);color:#ff8a8a}
+  button.danger:hover{background:rgba(255,95,95,.1);border-color:rgba(255,95,95,.55)}
+  button.ghost{color:var(--dim)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .stack{display:flex;flex-direction:column;gap:8px}
+  .hint{font-size:11px;color:var(--dimmer);margin:10px 0 0;line-height:1.55}
+
+  /* form */
+  .formrow{display:flex;gap:8px;align-items:flex-end}
+  .field{flex:1}
+  .field label{display:block;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--dimmer);margin-bottom:5px}
+  input{width:100%;background:#0a0c11;border:1px solid var(--line);border-radius:7px;
+    color:var(--txt);padding:8px 10px;font-family:var(--mono);font-size:12.5px;outline:none}
+  input:focus{border-color:var(--acc)}
+  .btn-inline{width:auto;white-space:nowrap;background:var(--acc);color:#04101f;
+    border-color:var(--acc)}
+  .btn-inline:hover{background:#7cb3ff;border-color:#7cb3ff}
+
+  /* defect list */
+  .defect{display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed rgba(255,95,95,.25);font-size:12px}
+  .defect:last-child{border-bottom:none}
+  .defect .code{font-family:var(--mono);font-size:10px;color:var(--bad);
+    background:rgba(255,95,95,.12);padding:2px 7px;border-radius:4px;white-space:nowrap;height:fit-content;font-weight:700}
+  .defect .d{color:var(--dim);font-size:11.5px}
+  .spin{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.2);
+    border-top-color:currentColor;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);
+    color:var(--dimmer);font-size:11.5px}
+  footer code{font-family:var(--mono);color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brandrow">
+      <h1>ATTEST</h1>
+      <span class="tagline">the audit log you cannot backdate</span>
+    </div>
+    <p class="sub">
+      Every automated decision below is sealed into a hash chain and carries a zero-knowledge proof
+      that it followed the published policy — <strong>without revealing the applicant's data</strong>.
+      Edit history and the chain catches you.
+    </p>
+  </header>
+
+  <div id="banner" class="banner intact">
+    <span class="dot pulse"></span>
+    <div>
+      <div class="big" id="bannerTitle">VERIFYING…</div>
+      <div class="detail" id="bannerDetail">checking chain integrity</div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Decisions</div><div class="v" id="sTotal">—</div></div>
+    <div class="stat"><div class="k">Proven</div><div class="v ok" id="sProven">—</div></div>
+    <div class="stat"><div class="k">Chain</div><div class="v" id="sChain">—</div></div>
+    <div class="stat"><div class="k">Anchored</div><div class="v" id="sAnchored">—</div></div>
+    <div class="stat"><div class="k">Root</div><div class="v" id="sRoot" style="font-size:12px">—</div></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h2>Decision ledger — append-only</h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:44px">#</th>
+              <th style="width:96px">Decision</th>
+              <th>Reason</th>
+              <th style="width:118px">Proof</th>
+              <th style="width:150px">Entry hash</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:22px">
+        <h2>Run the agent</h2>
+        <div style="padding:16px 18px">
+          <div class="formrow">
+            <div class="field">
+              <label>Credit score (0–1000)</label>
+              <input id="inScore" type="number" value="740" min="0" max="1000" />
+            </div>
+            <div class="field">
+              <label>DTI, basis points</label>
+              <input id="inDti" type="number" value="3200" min="0" max="20000" />
+            </div>
+            <button class="btn-inline" id="btnDecide" style="width:auto">Seal decision</button>
+          </div>
+          <p class="hint">
+            The score and DTI you enter are <strong>never stored in plaintext or revealed by the proof</strong>.
+            Only a Poseidon commitment is recorded, and the proof shows the verdict followed the public rule.
+            Policy: approve if score ≥ <span id="polT">620</span> and DTI ≤ <span id="polD">4200</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <h2>Attacker console</h2>
+        <div class="body stack">
+          <button class="danger" id="btnTamper">1 · Edit a past decision</button>
+          <button class="danger" id="btnReseal">2 · Recompute the whole chain</button>
+          <button class="ghost" id="btnReset">Rebuild a clean record</button>
+          <p class="hint">
+            Step 1 rewrites a rejection into an approval in the database — what an operator with write
+            access would do. Step 2 is the sophisticated version: recompute every hash so the chain is
+            internally consistent again. Both are caught.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>What an auditor sees</h2>
+        <div class="body">
+          <div class="privrow"><span class="n">threshold</span><span class="tag pub">PUBLIC</span></div>
+          <div class="privrow"><span class="n">maxDti</span><span class="tag pub">PUBLIC</span></div>
+          <div class="privrow"><span class="n">decision</span><span class="tag pub">PUBLIC</span></div>
+          <div class="privrow"><span class="n">reasonCode</span><span class="tag pub">PUBLIC</span></div>
+          <div class="privrow"><span class="n">inputCommit</span><span class="tag pub">PUBLIC</span></div>
+          <div class="privrow"><span class="n">entryHash</span><span class="tag pub">PUBLIC</span></div>
+          <div class="privrow"><span class="n">score</span><span class="tag priv">PRIVATE</span></div>
+          <div class="privrow"><span class="n">dti</span><span class="tag priv">PRIVATE</span></div>
+          <div class="privrow"><span class="n">salt</span><span class="tag priv">PRIVATE</span></div>
+          <p class="hint">
+            The verdict is checkable, the reasoning is checkable, and the personal data never leaves
+            the prover. This is why the record can be published as evidence at all.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Findings</h2>
+        <div class="body" id="findings">
+          <p class="hint">No defects. Chain intact.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span id="zkState">zkVerify: checking…</span> ·
+    circuit <code>policy.circom</code> · Groth16 / BN254 · 297 constraints ·
+    <a href="/verify.html" style="color:var(--acc);text-decoration:none">verify a proof yourself →</a><br/>
+    Hash chain catches edits. Anchoring catches the operator. Both are needed; neither is sufficient alone.
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let state = null;
+let openSeq = null;
+
+function short(h){ return h ? h.slice(0,10)+'…'+h.slice(-6) : '—'; }
+
+async function load(){
+  const r = await fetch('/api/state');
+  state = await r.json();
+  render();
+}
+
+function render(){
+  const { entries, chain, stats, policy, anchor, zkverify } = state;
+
+  $('polT').textContent = policy.threshold;
+  $('polD').textContent = policy.maxDti;
+
+  // banner
+  const b = $('banner');
+  if(chain.ok){
+    b.className = 'banner intact';
+    $('bannerTitle').textContent = 'CHAIN INTACT';
+    $('bannerDetail').textContent = `${chain.length} entries verified from genesis · root ${short(chain.root)}`;
+  } else {
+    b.className = 'banner broken';
+    $('bannerTitle').textContent = 'CHAIN BROKEN';
+    const heal = state.demo && state.demo.healInMs != null
+      ? ' · self-heals in ' + Math.ceil(state.demo.healInMs/1000) + 's'
+      : '';
+    $('bannerDetail').textContent = chain.defects.map(d=>d.type).join(' · ') + heal;
+  }
+
+  $('sTotal').textContent = stats.total;
+  $('sProven').textContent = stats.proven;
+  $('sChain').textContent = chain.ok ? 'INTACT' : 'BROKEN';
+  $('sChain').className = 'v ' + (chain.ok ? 'ok' : 'bad');
+  $('sAnchored').textContent = stats.anchored;
+  $('sAnchored').className = 'v ' + (stats.anchored > 0 ? 'ok' : 'warn');
+  $('sRoot').textContent = short(chain.root);
+
+  // rows
+  const tbody = $('rows');
+  tbody.innerHTML = '';
+  entries.forEach(e => {
+    const tr = document.createElement('tr');
+    tr.className = 'entry' + (openSeq === e.seq ? ' open' : '');
+    const proven = e.proof && e.proof.status === 'proven';
+    const anchored = e.proof && e.proof.anchor && e.proof.anchor.status === 'finalized';
+    tr.innerHTML = `
+      <td class="mono">${String(e.seq).padStart(2,'0')}</td>
+      <td><span class="pill ${e.decision===1?'approve':'reject'}">${e.decision===1?'APPROVE':'REJECT'}</span></td>
+      <td class="mono">${reasonName(e.reasonCode)}</td>
+      <td>
+        <span class="pill ${proven?'proven':'unproven'}">${proven?'PROVEN':'UNPROVEN'}</span>
+        ${proven?`<span class="pill ${anchored?'anchored':'local'}" style="margin-left:4px">${anchored?'ON-CHAIN':'LOCAL'}</span>`:''}
+      </td>
+      <td class="mono">${short(e.entryHash)}</td>
+    `;
+    tr.onclick = () => { openSeq = openSeq === e.seq ? null : e.seq; render(); };
+    tbody.appendChild(tr);
+
+    if(openSeq === e.seq){
+      const d = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 5; td.className = 'detail';
+      const ps = e.proof && e.proof.publicSignals;
+      td.innerHTML = `
+        <div class="kv">
+          <div class="k">entry hash</div><div class="v">${e.entryHash}</div>
+          <div class="k">prev hash</div><div class="v">${e.prevHash}</div>
+          <div class="k">input commit</div><div class="v">${e.inputCommit}</div>
+          <div class="k">sealed at</div><div class="v">${e.timestamp}</div>
+          <div class="k">policy</div><div class="v">${e.policyId}</div>
+        </div>
+        <div class="kv">
+          <div class="k">public signals</div>
+          <div class="v">${ps ? ps.map((s,i)=>`<div>[${i}] ${s.length>46?short(s)+' <span style="color:var(--dimmer)">('+s.length+' digits)</span>':s}</div>`).join('') : '<span class="null">none — entry not proven</span>'}</div>
+          <div class="k">score / dti</div>
+          <div class="v"><span class="null">not in this record — never stored in plaintext</span></div>
+        </div>
+        <div class="notebox">
+          The proof is bound to <code>${short(e.entryHash)}</code>. Public signal [5] must equal it,
+          which is what stops this proof being reused as evidence for a different decision.
+        </div>
+      `;
+      d.appendChild(td);
+      tbody.appendChild(d);
+    }
+  });
+
+  // demo-controlled hints
+  const tamperBtn = $('btnTamper'), resealBtn = $('btnReseal');
+  if (state.demo && state.demo.locked) {
+    tamperBtn.textContent = '1 · Edit a past decision (locked)';
+    resealBtn.textContent = '2 · Recompute the whole chain (locked)';
+  }
+
+  // findings
+  const f = $('findings');
+  if(chain.ok){
+    f.innerHTML = '<p class="hint">No defects. Every entry links to its predecessor, every stored hash matches its content, and the chain root matches the last published anchor.</p>';
+  } else {
+    f.innerHTML = chain.defects.map(d => `
+      <div class="defect">
+        <span class="code">${d.type}</span>
+        <span class="d">${d.detail}</span>
+      </div>
+    `).join('');
+  }
+
+  // zkverify state
+  $('zkState').innerHTML = zkverify.configured
+    ? 'zkVerify: <strong style="color:var(--ok)">Kurier configured</strong> — proofs anchored on submission'
+    : 'zkVerify: <strong style="color:var(--warn)">local mode</strong> — proofs verified locally, not yet anchored on-chain (set <code>KURIER_API_KEY</code>)';
+}
+
+function reasonName(c){
+  return {0:'APPROVED',1:'SCORE_BELOW_THRESHOLD',2:'DTI_EXCEEDED'}[c] ?? String(c);
+}
+
+/* actions */
+async function post(url, body){
+  const r = await fetch(url, {
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body: JSON.stringify(body||{})
+  });
+  return r.json();
+}
+
+$('btnDecide').onclick = async () => {
+  const btn = $('btnDecide');
+  btn.disabled = true; btn.textContent = 'Sealing…';
+  await post('/api/decide', {
+    score: Number($('inScore').value),
+    dti: Number($('inDti').value)
+  });
+  openSeq = state ? state.entries.length : null;
+  await load();
+  btn.disabled = false; btn.textContent = 'Seal decision';
+};
+
+$('btnTamper').onclick = async () => {
+  if(!state || !state.entries.length) return;
+  const reject = state.entries.find(e => e.decision === 0) || state.entries[1] || state.entries[0];
+  await post('/api/tamper', { seq: reject.seq });
+  openSeq = reject.seq;
+  await load();
+};
+
+$('btnReseal').onclick = async () => {
+  if(!state || !state.entries.length) return;
+  const reject = state.entries.find(e => e.decision === 0) || state.entries[1] || state.entries[0];
+  await post('/api/tamper/reseal', { seq: reject.seq });
+  await load();
+};
+
+$('btnReset').onclick = async () => {
+  $('btnReset').disabled = true; $('btnReset').textContent = 'Rebuilding…';
+  await post('/api/reset');
+  openSeq = null;
+  await load();
+  $('btnReset').disabled = false; $('btnReset').textContent = 'Rebuild a clean record';
+};
+
+load();
+setInterval(() => { if(!document.hidden) load(); }, 5000);
+</script>
+</body>
+</html>

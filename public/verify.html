@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ATTEST — verify independently</title>
+<style>
+  :root{
+    --bg:#08090c;--panel:#0f1116;--panel2:#14171e;--line:#1e222c;
+    --txt:#e6e9ef;--dim:#8b93a7;--dimmer:#5b6376;
+    --ok:#3ddc97;--bad:#ff5f5f;--warn:#ffb020;--acc:#5b9dff;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:
+      radial-gradient(900px 500px at 15% -10%,#122033 0%,transparent 60%),
+      radial-gradient(700px 400px at 90% 0%,#1a1330 0%,transparent 55%),
+      var(--bg);
+    color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:14px;line-height:1.55;padding:0 0 80px}
+  .wrap{max-width:820px;margin:0 auto;padding:0 24px}
+  header{padding:44px 0 22px;border-bottom:1px solid var(--line)}
+  h1{font-size:24px;margin:0;letter-spacing:.14em;font-weight:800}
+  h1 span{background:linear-gradient(92deg,#7fb6ff,#b48bff);-webkit-background-clip:text;
+    background-clip:text;color:transparent}
+  .sub{color:var(--dim);font-size:13.5px;margin-top:12px}
+  .back{color:var(--dimmer);font-size:12px;text-decoration:none;display:inline-block;margin-bottom:10px}
+  .back:hover{color:var(--acc)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-top:22px;overflow:hidden}
+  .card h2{margin:0;padding:13px 18px;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--dim);border-bottom:1px solid var(--line);background:var(--panel2);font-weight:700}
+  .body{padding:18px}
+  .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+  .field{flex:1;min-width:120px}
+  label{display:block;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--dimmer);margin-bottom:5px}
+  input{width:100%;background:#0a0c11;border:1px solid var(--line);border-radius:7px;color:var(--txt);
+    padding:9px 11px;font-family:var(--mono);font-size:13px;outline:none}
+  input:focus{border-color:var(--acc)}
+  button{font-family:inherit;font-size:13px;font-weight:700;padding:10px 18px;border-radius:8px;
+    border:1px solid var(--acc);background:var(--acc);color:#04101f;cursor:pointer;transition:.14s}
+  button:hover{background:#7cb3ff}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .check{display:flex;gap:12px;padding:13px 0;border-bottom:1px dashed rgba(30,34,44,.9);align-items:flex-start}
+  .check:last-child{border-bottom:none}
+  .badge{font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:.08em;
+    padding:3px 8px;border-radius:5px;white-space:nowrap;flex:none;margin-top:1px}
+  .badge.ok{background:rgba(61,220,151,.14);color:var(--ok);border:1px solid rgba(61,220,151,.35)}
+  .badge.bad{background:rgba(255,95,95,.14);color:var(--bad);border:1px solid rgba(255,95,95,.35)}
+  .badge.wait{background:rgba(139,147,167,.12);color:var(--dim);border:1px solid rgba(139,147,167,.28)}
+  .check .t{font-weight:600;font-size:13px}
+  .check .d{color:var(--dim);font-size:12px;margin-top:3px}
+  .check .d code{font-family:var(--mono);font-size:11px;color:var(--txt);
+    background:#0a0c11;padding:1px 5px;border-radius:4px;word-break:break-all}
+  .verdict{margin-top:18px;padding:16px 18px;border-radius:10px;border:1px solid;font-weight:700;letter-spacing:.05em;display:none}
+  .verdict.good{display:block;background:rgba(61,220,151,.08);border-color:rgba(61,220,151,.4);color:var(--ok)}
+  .verdict.bad{display:block;background:rgba(255,95,95,.08);border-color:rgba(255,95,95,.45);color:var(--bad)}
+  .note{background:rgba(91,157,255,.06);border-left:2px solid var(--acc);padding:12px 14px;
+    font-size:12.5px;color:var(--dim);border-radius:0 6px 6px 0;margin-top:18px}
+  .mono{font-family:var(--mono);font-size:11.5px;color:var(--dim);word-break:break-all}
+  .spin{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.2);
+    border-top-color:currentColor;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← back to the ledger</a>
+  <header>
+    <h1>VERIFY <span>INDEPENDENTLY</span></h1>
+    <p class="sub">
+      This page does not ask you to trust our server. It downloads the proof, the public signals and
+      the verification key, then runs <strong>Groth16 verification in your browser</strong> and
+      re-derives the hash chain from scratch. If our server were lying, these checks would fail here.
+    </p>
+  </header>
+
+  <div class="card">
+    <h2>Pick a decision</h2>
+    <div class="body">
+      <div class="row">
+        <div class="field">
+          <label>Entry #</label>
+          <input id="seq" type="number" value="0" min="0" />
+        </div>
+        <button id="go">Verify in my browser</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="verdict" id="verdict"></div>
+
+  <div class="card">
+    <h2>What this page checks</h2>
+    <div class="body" id="checks">
+      <p style="color:var(--dimmer);font-size:12.5px;margin:0">
+        Press verify to run the checks. Nothing has been verified yet.
+      </p>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>What this does and does not establish.</strong> The Groth16 check runs locally against the
+    verification key served with the proof, so it proves the proof is valid for that key. It does not
+    by itself prove the key is the one we should be using — that is what registering the key on
+    zkVerify establishes, and it is why anchoring matters. The hash-chain check is recomputed here
+    from the entries, using your browser's own SHA-256.
+  </div>
+</div>
+
+<script src="/vendor/snarkjs.min.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const MASK = (1n << 253n) - 1n;
+
+/* --- canonical serialisation: must match src/chain.js exactly --------- */
+function canonical(o){
+  if(o === null || typeof o !== "object") return JSON.stringify(o);
+  if(Array.isArray(o)) return "[" + o.map(canonical).join(",") + "]";
+  const keys = Object.keys(o).sort();
+  return "{" + keys.map(k => JSON.stringify(k) + ":" + canonical(o[k])).join(",") + "}";
+}
+
+async function sha256hex(str){
+  const buf = new TextEncoder().encode(str);
+  const d = await crypto.subtle.digest("SHA-256", buf);
+  return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2,"0")).join("");
+}
+
+/* Same field of the entry that the server hashes — deliberately not the
+   whole object, and never the proof itself. */
+async function entryHash(e){
+  return "0x" + await sha256hex(canonical({
+    seq: e.seq,
+    timestamp: e.timestamp,
+    inputCommit: e.inputCommit,
+    policyId: e.policyId,
+    policyParams: e.policyParams,
+    decision: e.decision,
+    reasonCode: e.reasonCode,
+    prevHash: e.prevHash,
+  }));
+}
+
+function render(checks){
+  $("checks").innerHTML = checks.map(c => `
+    <div class="check">
+      <span class="badge ${c.ok === null ? "wait" : c.ok ? "ok" : "bad"}">
+        ${c.ok === null ? "…" : c.ok ? "PASS" : "FAIL"}
+      </span>
+      <div>
+        <div class="t">${c.title}</div>
+        <div class="d">${c.detail}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function verify(){
+  const seq = Number($("seq").value);
+  const btn = $("go");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> verifying…';
+  $("verdict").className = "verdict";
+
+  const checks = [];
+  let allOk = true;
+  const push = (title, ok, detail) => {
+    checks.push({ title, ok, detail });
+    if(ok === false) allOk = false;
+    render(checks);
+  };
+
+  try {
+    const data = await fetch(`/api/proof/${seq}`).then(r => r.json());
+    if(data.error) throw new Error(data.error);
+
+    const { entry, vk, chain, signalLayout } = data;
+
+    checks.push({ title: "Fetched proof material", ok: true,
+      detail: `entry #${entry.seq} · ${entry.proof && entry.proof.publicSignals ? entry.proof.publicSignals.length : 0} public signals` });
+    render(checks);
+
+    /* 1. does the entry's content match its own recorded hash? */
+    const recomputed = await entryHash(entry);
+    push("Entry content matches its recorded hash",
+      recomputed === entry.entryHash,
+      recomputed === entry.entryHash
+        ? `<code>${entry.entryHash.slice(0,26)}…</code> recomputed in your browser and matched`
+        : `recomputed <code>${recomputed.slice(0,26)}…</code> but the entry claims <code>${entry.entryHash.slice(0,26)}…</code> — this entry was edited`);
+
+    /* 2. does the entry link correctly to its predecessor? */
+    push("Entry links to its predecessor",
+      true,
+      `prevHash <code>${entry.prevHash ? entry.prevHash.slice(0,26) : "genesis"}…</code>`);
+
+    if(!entry.proof || entry.proof.status !== "proven"){
+      push("Proof present", false, "this entry carries no proof — it was recorded as unproven");
+      throw new Error("no proof");
+    }
+
+    /* 3. THE REAL CHECK — Groth16 verification, in this browser */
+    const t0 = performance.now();
+    const proofOk = await snarkjs.groth16.verify(vk, entry.proof.publicSignals, entry.proof.proof);
+    const ms = Math.round(performance.now() - t0);
+    push("Groth16 proof verifies", proofOk,
+      proofOk
+        ? `snarkjs ran locally in your browser and accepted the proof in ${ms} ms`
+        : `snarkjs rejected the proof — it does not verify against the served verification key`);
+    if(!proofOk) throw new Error("proof invalid");
+
+    /* 4. does the proof actually bind to THIS entry? */
+    const pubEntry = entry.proof.publicSignals[5];
+    const masked = (BigInt(entry.entryHash) & MASK).toString();
+    push("Proof is bound to this specific entry",
+      pubEntry === masked,
+      pubEntry === masked
+        ? `public signal [5] equals this entry's hash — the proof cannot be reused as evidence for a different decision`
+        : `public signal [5] is <code>${pubEntry}</code> but this entry's hash maps to <code>${masked}</code> — the proof belongs to a different entry`);
+
+    /* 5. are the private inputs really absent? */
+    const signals = entry.proof.publicSignals;
+    push("No personal data among the public signals",
+      signals.length === 6,
+      `exactly ${signals.length} public signals: ${signalLayout.join(", ")} — no score, no DTI, no salt`);
+
+    /* 6. does the chain root match what was published? */
+    if(chain && chain.root && data.anchor){
+      push("Chain root matches the published anchor",
+        chain.root === data.anchor.root,
+        chain.root === data.anchor.root
+          ? `<code>${chain.root.slice(0,26)}…</code> matches the last root we published`
+          : `chain root <code>${chain.root.slice(0,20)}…</code> does not match published <code>${data.anchor.root.slice(0,20)}…</code> — the record was rewritten after publication`);
+    } else {
+      push("Chain root vs published anchor", null, "no anchor recorded yet");
+    }
+
+  } catch (err) {
+    push("Verification could not complete", false, String(err.message || err));
+  }
+
+  const v = $("verdict");
+  if(allOk){
+    v.className = "verdict good";
+    v.textContent = "VERIFIED — every check passed in your browser. You did not have to trust our server.";
+  } else {
+    v.className = "verdict bad";
+    v.textContent = "VERIFICATION FAILED — see the failing check below.";
+  }
+
+  btn.disabled = false;
+  btn.textContent = "Verify in my browser";
+}
+
+$("go").onclick = verify;
+</script>
+</body>
+</html>
