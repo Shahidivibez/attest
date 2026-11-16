@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# secrets — never commit
+.env
+.env.local
+
+# trusted-setup intermediates are large and reproducible; the *built*
+# artifacts we ship are committed below because the host has no circom.
+circuits/ptau/
+circuits/build/policy.r1cs
+circuits/build/policy.sym
+
+# runtime state (regenerated on boot)
+data/
+*.log
+.DS_Store
+
+# internal planning docs (workspace only, not published)
+ACTIONS.md
+NEXT.md
