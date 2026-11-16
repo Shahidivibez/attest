@@ -180,6 +180,7 @@ time. `render.yaml` and `railway.json` are included.
 |---|---|
 | `PORT` | server port |
 | `KURIER_API_KEY` | enables real on-chain anchoring; without it the app runs `mode: "local"` and says so |
+| `KURIER_API_URL` | defaults to free testnet (`https://api-testnet.kurier.xyz/api/v1`); set mainnet explicitly |
 | `ATTEST_VK_HASH` | our circuit's VK, registered on Kurier |
 | `DEMO_HEAL_MS` | tamper self-heal window (default `90000`) |
 | `TAMPER_LOCKED`, `DEMO_TOKEN` | lock the demo endpoints behind a token |
@@ -198,22 +199,28 @@ can produce proofs of false statements. That is fine for a demo and unacceptable
 The path forward is a public multi-party ceremony (or a zkVerify-supported setup) with the
 contribution hashes published. This is a single function swap, not a redesign.
 
-**2. Anchoring is local by default.** Without `KURIER_API_KEY` the app runs in `mode: "local"`:
+**2. Anchoring defaults to the free testnet.** zkVerify **testnet** via Kurier is free and has full
+feature parity — proofs finalise on zkVerify testnet. **Mainnet** costs $0.005 per proof plus $0.001
+per verification-key registration, paid in USDC on Base via x402. The trade is honest: testnet is
+real on-chain finality on a test network, not a mainnet guarantee. The network is shown in the UI
+and recorded with every anchor so nobody has to guess which one a given record came from.
+
+**3. Anchoring is local by default.** Without `KURIER_API_KEY` the app runs in `mode: "local"`:
 proofs are verified locally and **nothing is anchored on-chain**. The UI says so explicitly rather
 than implying an on-chain guarantee it doesn't have. In that state the chain is tamper-*evident*
 (it catches edits) but not tamper-*proof* against the operator (they control both the data and the
 verifier). Those are different claims and it matters which one is true.
 
-**3. The policy is a toy.** Two thresholds over two numbers. The mechanism generalises to real
+**4. The policy is a toy.** Two thresholds over two numbers. The mechanism generalises to real
 policies — multiple weighted factors, regulatory thresholds, any deterministic rule — but this
 specific circuit is a demonstration, not a credit engine.
 
-**4. The demo tamper endpoint is an affordance, not a feature.** On a public URL it is guarded by
+**5. The demo tamper endpoint is an affordance, not a feature.** On a public URL it is guarded by
 self-heal, rate limiting and an optional token, but it exists so reviewers can watch the system catch
 an edit. In production there is no such endpoint — tampering happens outside the application, in the
 database, which is exactly the threat model.
 
-**5. The agent does not use an LLM, deliberately.** The decision is a deterministic rule, because
+**6. The agent does not use an LLM, deliberately.** The decision is a deterministic rule, because
 the thing being proven is rule-following and an LLM in the decision path would make the proof
 meaningless. Where an LLM belongs in this product is drafting the *explanation* attached to a
 decision — and that explanation should be proven to be derived from the same committed inputs.

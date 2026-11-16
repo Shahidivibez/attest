@@ -168,6 +168,7 @@ async function decide({ score, dti, subject = null }) {
     length: entries.length,
     mode: proofResult.anchor?.mode || "local",
     status: proofResult.anchor?.status || "not_anchored",
+    network: proofResult.anchor?.network || null,
   });
   store.saveAnchors(anchors);
   snapshotPristine();
@@ -211,7 +212,7 @@ app.get("/api/state", (req, res) => {
       healInMs: meta.tamperedAt ? Math.max(0, HEAL_MS - (Date.now() - meta.tamperedAt)) : null,
       locked: TAMPER_LOCKED,
     },
-    zkverify: { configured: zkverify.configured(), vkHash: zkverify.vkHash() },
+    zkverify: { configured: zkverify.configured(), ...zkverify.network() },
   });
 });
 
@@ -363,7 +364,7 @@ app.get("/health", (req, res) =>
     ok: true,
     service: "attest",
     entries: store.loadEntries().length,
-    zkverify: zkverify.configured() ? "kurier" : "local",
+    zkverify: zkverify.configured() ? zkverify.network().network : "local",
   })
 );
 
@@ -396,7 +397,15 @@ async function boot() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`[attest] listening on http://0.0.0.0:${PORT}`);
     console.log(`[attest] data dir: ${store.DATA_DIR}`);
-    console.log(`[attest] zkVerify: ${zkverify.configured() ? "Kurier configured" : "LOCAL only (set KURIER_API_KEY)"}`);
+    if (zkverify.configured()) {
+      const n = zkverify.network();
+      console.log(`[attest] zkVerify: Kurier configured -> ${n.network} (${n.baseUrl})`);
+      // Register the circuit's VK up front so the first decision is not slowed
+      // by a registration round trip.
+      zkverify.ensureVkRegistered().catch((e) => console.log(`[attest] VK pre-registration failed: ${e.message}`));
+    } else {
+      console.log(`[attest] zkVerify: LOCAL only (set KURIER_API_KEY to anchor on-chain)`);
+    }
     console.log(`[attest] tamper demo: ${TAMPER_LOCKED ? "locked behind token" : "open, self-heals in " + HEAL_MS / 1000 + "s"}`);
   });
 }

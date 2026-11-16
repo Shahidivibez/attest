@@ -377,7 +377,7 @@ function render(){
 
   // zkverify state
   $('zkState').innerHTML = zkverify.configured
-    ? 'zkVerify: <strong style="color:var(--ok)">Kurier configured</strong> — proofs anchored on submission'
+    ? 'zkVerify: <strong style="color:var(--ok)">anchoring on ' + (zkverify.network || 'Kurier') + '</strong> — each proof is submitted and polled to <code>Finalized</code>'
     : 'zkVerify: <strong style="color:var(--warn)">local mode</strong> — proofs verified locally, not yet anchored on-chain (set <code>KURIER_API_KEY</code>)';
 }
 
