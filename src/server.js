@@ -323,20 +323,32 @@ app.post("/api/tamper/reseal", tamperGate, (req, res) => {
   const entries = store.loadEntries();
   if (!entries.length) return res.status(409).json({ error: "record is empty" });
 
-  const seq = Number(req.body?.seq ?? 1);
-  const idx = entries.findIndex((e) => e.seq === seq);
-  if (idx === -1) return res.status(404).json({ error: `no entry with seq ${seq}` });
-
-  let prev = idx === 0 ? chainLib.GENESIS : entries[idx - 1].entryHash;
-  for (let i = idx; i < entries.length; i++) {
+  // Rebuild the ENTIRE chain from genesis, not from a nominated entry.
+  //
+  // An earlier version resealed only from the entry the caller named, and the
+  // UI named it by searching for the first remaining rejection — which, after a
+  // tamper had flipped that entry to an approval, selected a *different* entry
+  // and left the edited one with a stale hash. The demo then reported
+  // CONTENT_ALTERED instead of ROOT_MISMATCH and looked broken.
+  //
+  // A real attacker covering their tracks would recompute everything. So we do.
+  let prev = chainLib.GENESIS;
+  for (let i = 0; i < entries.length; i++) {
     entries[i].prevHash = prev;
     entries[i].entryHash = chainLib.entryHash(entries[i]);
     prev = entries[i].entryHash;
   }
   store.saveEntries(entries);
-  store.patchMeta({ tamperedAt: Date.now(), tamperSeq: seq });
 
-  res.json({ resealed: true, fromSeq: seq, note: "chain recomputed end-to-end", healsInMs: HEAL_MS });
+  const meta = store.loadMeta();
+  store.patchMeta({ tamperedAt: Date.now(), tamperSeq: meta.tamperSeq ?? null });
+
+  res.json({
+    resealed: true,
+    fromSeq: 0,
+    note: "entire chain recomputed from genesis — internally consistent again",
+    healsInMs: HEAL_MS,
+  });
 });
 
 app.post("/api/reset", tamperGate, async (req, res) => {
